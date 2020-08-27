@@ -1,0 +1,1 @@
+All ok!VK_SUCCESSVK_SUCCESSVK_SUCCESSVK_SUCCESSvkCreateInstance(&instance_create_info, nullptr, &instance)VK_SUCCESSvkCreateInstance(&instance_create_info, nullptr, &instance)	VK_SUCCESSvkCreateInstance(&instance_create_info, nullptr, &instance)	VK_SUCCESSte_info, nullptr, &instance)	VK_SUCCESSte_info, nullptr, &instance)	VK_SUCCESS
