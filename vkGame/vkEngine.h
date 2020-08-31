@@ -1,9 +1,9 @@
 #pragma once
 
-#define VK_USE_PLATFORM_WIN32_KHR
 #include "pch.h"
 
-#define check_step(stp) if (stp) step_counter++; else return
+#define init_step(stp) if (stp) step_counter++; else return
+#define deinit_step(stp) if (5 - step_counter > 0) step_counter--; else stp
 #define vk_verify(arg) (arg == VK_SUCCESS)
 #define vk_assert(arg) if (arg != VK_SUCCESS) return false
 
@@ -48,12 +48,12 @@ public:
 	vkEngine();
 	~vkEngine();
 private:
+	VkInstance instance;
+
 	VkDebugReportCallbackEXT debugReportCallback;
 	PFN_vkCreateDebugReportCallbackEXT dbgCreateDebugReportCallback;
 	PFN_vkDebugReportMessageEXT dbgDebugReportMessageEXT;
 	PFN_vkDestroyDebugReportCallbackEXT dbgDestroyDebugReportCallback;
-
-	VkInstance instance;
 
 	VkPhysicalDevice physical_device;
 	VkPhysicalDeviceProperties physical_device_properties;
@@ -63,10 +63,11 @@ private:
 	VkDevice device;
 
 	VkQueue queue;
+	uint32_t graphic_queue_family_index = 0;
 
 	VkSurfaceKHR surface;
 
-	HINSTANCE hInstance = GetModuleHandle(nullptr);
+	Window* window;
 
 	uint8_t step_counter = 0;
 
@@ -87,5 +88,7 @@ private:
 
 	bool InitSurface();
 	void DeinitSurface();
+
+	void Run();
 };
 

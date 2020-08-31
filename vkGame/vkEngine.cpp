@@ -1,21 +1,30 @@
 #include "vkEngine.h"
 
 vkEngine::vkEngine() {
-    check_step(InitInstance());
-    check_step(InitDebugReport());
-    check_step(InitDevice());
-    check_step(InitQueue());
-    check_step(InitSurface());
+    init_step(InitInstance());
+    init_step(InitDebugReport());
+    init_step(InitDevice());
+    init_step(InitQueue());
+
+    window = new Window(800, 480, L"_test_");
+
+    init_step(InitSurface());
+
+    window->Open();
+    Run();
 }
 
 vkEngine::~vkEngine() {
     vkDeviceWaitIdle(device);
 
-    DeinitSurface();
-    DeinitQueue();
-    DeinitDevice();
-    DeinitDebugReport();
-    DeinitInstance();
+    window->Close();
+    deinit_step(DeinitSurface());
+    delete window;
+
+    deinit_step(DeinitQueue());
+    deinit_step(DeinitDevice());
+    deinit_step(DeinitDebugReport());
+    deinit_step(DeinitInstance());
 }
 
 bool vkEngine::InitInstance()
@@ -106,7 +115,7 @@ bool vkEngine::InitInstance()
 
     VkInstanceCreateInfo instance_create_info = {};
     instance_create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    instance_create_info.pNext = nullptr;
+    instance_create_info.pNext = &debugReportCallback;                      // ?
     instance_create_info.flags = NULL;
     instance_create_info.pApplicationInfo = &app_info;
     instance_create_info.enabledLayerCount = amountOfLayers;
@@ -208,6 +217,13 @@ bool vkEngine::InitDevice()
                 << queue_family_property_list[i].minImageTransferGranularity.depth << "."
                 << queue_family_property_list[i].minImageTransferGranularity.depth << "]" << std::endl << std::endl;
         }
+
+        for (uint32_t i = 0; i < amountOfQueueFamilies; i++) {
+            if ((queue_family_property_list[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0) {
+                graphic_queue_family_index = i;
+                break;
+            }
+        }
     }
 
     // check available queue families and continue ...
@@ -218,7 +234,7 @@ bool vkEngine::InitDevice()
     device_queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
     device_queue_create_info.pNext = nullptr;
     device_queue_create_info.flags = 0;
-    device_queue_create_info.queueFamilyIndex = 0;      //chouse correct family index
+    device_queue_create_info.queueFamilyIndex = graphic_queue_family_index;      //chouse correct family index
     device_queue_create_info.queueCount = 1;            //check if this amount is available
     device_queue_create_info.pQueuePriorities = queue_priorities;
 
@@ -265,8 +281,8 @@ bool vkEngine::InitSurface()
     surface_create_info.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
     surface_create_info.pNext = nullptr;
     surface_create_info.flags = NULL;
-    surface_create_info.hinstance = nullptr;
-    surface_create_info.hwnd = nullptr;
+    surface_create_info.hinstance = window->GetInstance();
+    surface_create_info.hwnd = window->GetHandle();
 
     return vk_verify(vkCreateWin32SurfaceKHR(instance, &surface_create_info, nullptr, &surface));
 }
@@ -274,6 +290,13 @@ bool vkEngine::InitSurface()
 void vkEngine::DeinitSurface()
 {
     vkDestroySurfaceKHR(instance, surface, nullptr);
+}
+
+void vkEngine::Run()
+{
+    while (window->Update()) {
+
+    }
 }
 
 int main() {
