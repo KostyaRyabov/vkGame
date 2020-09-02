@@ -21,7 +21,15 @@ LRESULT CALLBACK WndProc(
 	return DefWindowProc(hWnd, message, wParam, lParam);
 }
 
-Window::Window(uint32_t size_x, uint32_t size_y, const wchar_t* name)
+Window::Window() {
+}
+
+Window::~Window()
+{
+	if (_run) Close();
+}
+
+void Window::Open(uint32_t size_x, uint32_t size_y, const wchar_t* name)
 {
 	WNDCLASS window_class = {};
 	window_class.style = CS_HREDRAW | CS_VREDRAW;
@@ -31,7 +39,7 @@ Window::Window(uint32_t size_x, uint32_t size_y, const wchar_t* name)
 	window_class.hInstance = _instance;
 	window_class.hIcon = LoadIcon(_instance, IDI_APPLICATION);
 	window_class.hCursor = LoadCursor(NULL, IDC_ARROW);
-	window_class.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
+	window_class.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 	window_class.lpszMenuName = NULL;
 	window_class.lpszClassName = name;
 
@@ -44,9 +52,9 @@ Window::Window(uint32_t size_x, uint32_t size_y, const wchar_t* name)
 	}
 
 	DWORD ex_style = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
-	DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZE;
+	DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
 
-	RECT window_rect = {0,0,LONG(_surface_size_x),LONG(_surface_size_y)};
+	RECT window_rect = { 0,0,LONG(_surface_size_x),LONG(_surface_size_y) };
 
 	AdjustWindowRectEx(&window_rect, style, FALSE, ex_style);
 
@@ -65,17 +73,9 @@ Window::Window(uint32_t size_x, uint32_t size_y, const wchar_t* name)
 	if (!_window) {
 		std::cout << "error - window don't created!";
 	}
-	
+
 	SetWindowLongPtr(_window, GWLP_USERDATA, (LONG_PTR)this);
-}
 
-Window::~Window()
-{
-	if (_run) Close();
-}
-
-void Window::Open()
-{
 	_run = true;
 
 	ShowWindow(_window, SW_SHOW);

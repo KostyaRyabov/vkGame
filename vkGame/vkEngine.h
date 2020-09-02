@@ -4,9 +4,9 @@
 
 #define init_step(stp) if (stp) step_counter++; else return
 #define deinit_step(stp) if (5 - step_counter > 0) step_counter--; else stp
-#define vk_verify(arg) (arg == VK_SUCCESS)
-#define vk_assert(arg) if (arg != VK_SUCCESS) return false
 
+#define vk_assert(arg) if (arg != VK_SUCCESS) return false
+#define vk_verify(arg) (arg == VK_SUCCESS)
 
 VKAPI_ATTR VkBool32 VKAPI_CALL DebugReportCallback(
 	VkDebugReportFlagsEXT       flags,
@@ -47,27 +47,29 @@ class vkEngine
 public:
 	vkEngine();
 	~vkEngine();
+
+	void Run();
 private:
-	VkInstance instance;
+	VkInstance instance = VK_NULL_HANDLE;
 
 	VkDebugReportCallbackEXT debugReportCallback;
 	PFN_vkCreateDebugReportCallbackEXT dbgCreateDebugReportCallback;
 	PFN_vkDebugReportMessageEXT dbgDebugReportMessageEXT;
 	PFN_vkDestroyDebugReportCallbackEXT dbgDestroyDebugReportCallback;
 
-	VkPhysicalDevice physical_device;
+	VkPhysicalDevice physical_device = VK_NULL_HANDLE;
 	VkPhysicalDeviceProperties physical_device_properties;
 	VkPhysicalDeviceFeatures physical_device_features;
 	VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
 
-	VkDevice device;
+	VkDevice device = VK_NULL_HANDLE;
 
 	VkQueue queue;
 	uint32_t graphic_queue_family_index = 0;
 
 	VkSurfaceKHR surface;
 
-	Window* window;
+	Window window;
 
 	uint8_t step_counter = 0;
 
@@ -89,6 +91,9 @@ private:
 	bool InitSurface();
 	void DeinitSurface();
 
-	void Run();
+	//-------------
+
+	bool DeviceExtensionsSupport(const VkPhysicalDevice& pysicalDevice, const char** requiredExtensions, uint32_t extensionCount);
+	bool GetQueueFamily(const VkPhysicalDevice& pysicalDevice, int flags, uint32_t& returnedFamilyIndex);
 };
 

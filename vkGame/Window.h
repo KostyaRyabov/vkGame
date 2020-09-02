@@ -3,10 +3,10 @@
 class Window
 {
 public:
-	Window(uint32_t size_x, uint32_t size_y, const wchar_t* name);
+	Window();
 	~Window();
 
-	void Open();
+	void Open(uint32_t size_x, uint32_t size_y, const wchar_t* name);
 	void Close();
 
 	bool Update();
