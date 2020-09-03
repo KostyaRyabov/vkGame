@@ -1,7 +1,9 @@
 #pragma once
 
 #include "pch.h"
+#include "Settings.h"
 
+static uint8_t	step_counter = 0;
 #define init_step(stp) if (stp) step_counter++; else return
 #define deinit_step(stp) if (5 - step_counter > 0) step_counter--; else stp
 
@@ -50,28 +52,37 @@ public:
 
 	void Run();
 private:
-	VkInstance instance = VK_NULL_HANDLE;
+	VkInstance								instance								=		VK_NULL_HANDLE;
 
-	VkDebugReportCallbackEXT debugReportCallback;
-	PFN_vkCreateDebugReportCallbackEXT dbgCreateDebugReportCallback;
-	PFN_vkDebugReportMessageEXT dbgDebugReportMessageEXT;
-	PFN_vkDestroyDebugReportCallbackEXT dbgDestroyDebugReportCallback;
+	VkDebugReportCallbackEXT				debugReportCallback;
+	PFN_vkCreateDebugReportCallbackEXT		dbgCreateDebugReportCallback;
+	PFN_vkDebugReportMessageEXT				dbgDebugReportMessageEXT;
+	PFN_vkDestroyDebugReportCallbackEXT		dbgDestroyDebugReportCallback;
 
-	VkPhysicalDevice physical_device = VK_NULL_HANDLE;
-	VkPhysicalDeviceProperties physical_device_properties;
-	VkPhysicalDeviceFeatures physical_device_features;
-	VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
+	VkPhysicalDevice						physical_device							=		VK_NULL_HANDLE;
+	VkPhysicalDeviceProperties				physical_device_properties;
+	VkPhysicalDeviceFeatures				physical_device_features;
+	VkPhysicalDeviceMemoryProperties		physical_device_memory_properties;
 
-	VkDevice device = VK_NULL_HANDLE;
+	VkDevice								device									=		VK_NULL_HANDLE;
 
-	VkQueue queue;
-	uint32_t graphic_queue_family_index = 0;
+	VkQueue									queue;
+	uint32_t								graphics_queue_family_index				=		0;
 
-	VkSurfaceKHR surface;
+	VkSurfaceKHR							surface;
+	VkSurfaceCapabilitiesKHR				surface_capabilities;
+	
+	uint32_t								amountOfSurfaceFormats;
+	VkSurfaceFormatKHR*						supported_surface_format_list;
 
-	Window window;
+	uint32_t								amountOfSurfacePresentationModes;
+	VkPresentModeKHR*						supported_presentation_mode_list;
 
-	uint8_t step_counter = 0;
+	VkSwapchainKHR							swapchain;
+	Window									window;
+
+	uint32_t amountOfSwapchainImages;
+	VkImageView*							imageViews;
 
 	bool InitInstance();
 	void DeinitInstance();
@@ -85,15 +96,18 @@ private:
 	bool InitQueue();
 	void DeinitQueue();
 
-	bool InitWindow();
-	void DeinitWindow();
-
 	bool InitSurface();
 	void DeinitSurface();
 
+	bool InitSwapchain();
+	void DeinitSwapchain();
+
+	bool InitSwapchainImages();
+	void DeinitSwapchainImages();
+
 	//-------------
 
-	bool DeviceExtensionsSupport(const VkPhysicalDevice& pysicalDevice, const char** requiredExtensions, uint32_t extensionCount);
-	bool GetQueueFamily(const VkPhysicalDevice& pysicalDevice, int flags, uint32_t& returnedFamilyIndex);
+	bool DeviceExtensionsSupport(const VkPhysicalDevice& physicalDevice, const char** requiredExtensions, uint32_t extensionCount);
+	bool GetQueueFamily(const VkPhysicalDevice& physicalDevice, int flags, uint32_t& returnedFamilyIndex);
 };
 

@@ -29,7 +29,7 @@ Window::~Window()
 	if (_run) Close();
 }
 
-void Window::Open(uint32_t size_x, uint32_t size_y, const wchar_t* name)
+bool Window::Create(uint32_t size_x, uint32_t size_y, const wchar_t* name)
 {
 	WNDCLASS window_class = {};
 	window_class.style = CS_HREDRAW | CS_VREDRAW;
@@ -43,18 +43,19 @@ void Window::Open(uint32_t size_x, uint32_t size_y, const wchar_t* name)
 	window_class.lpszMenuName = NULL;
 	window_class.lpszClassName = name;
 
-	_surface_size_x = size_x;
-	_surface_size_y = size_y;
+	_surface_size.width = size_x;
+	_surface_size.height = size_y;
 	_window_name = name;
 
 	if (!RegisterClassW(&window_class)) {
-		std::cout << "error - window is not loaded!";
+		std::cout << "error - window is not registered!";
+		return false;
 	}
 
 	DWORD ex_style = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
 	DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
 
-	RECT window_rect = { 0,0,LONG(_surface_size_x),LONG(_surface_size_y) };
+	RECT window_rect = { 0,0,LONG(_surface_size.width),LONG(_surface_size.height) };
 
 	AdjustWindowRectEx(&window_rect, style, FALSE, ex_style);
 
@@ -72,10 +73,16 @@ void Window::Open(uint32_t size_x, uint32_t size_y, const wchar_t* name)
 
 	if (!_window) {
 		std::cout << "error - window don't created!";
+		return false;
 	}
 
 	SetWindowLongPtr(_window, GWLP_USERDATA, (LONG_PTR)this);
 
+	return true;
+}
+
+void Window::Open()
+{
 	_run = true;
 
 	ShowWindow(_window, SW_SHOW);
@@ -110,4 +117,9 @@ HINSTANCE& Window::GetInstance()
 HWND& Window::GetHandle()
 {
 	return _window;
+}
+
+VkExtent2D& Window::GetSize()
+{
+	return _surface_size;
 }

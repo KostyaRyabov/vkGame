@@ -4,19 +4,27 @@ vkEngine::vkEngine() {
     init_step(InitInstance());
     init_step(InitDebugReport());
     init_step(InitDevice());
-    init_step(InitQueue());
-    init_step(InitWindow());
+    init_step(window.Create(800, 480, L"_test_"));
     init_step(InitSurface());
+
+    window.Open();
+    
+    init_step(InitQueue());
+    init_step(InitSwapchain());
+
+    init_step(InitSwapchainImages());
+
     Run();
 }
 
 vkEngine::~vkEngine() {
-    //vkDeviceWaitIdle(device);
+    vkDeviceWaitIdle(device);
 
-    
-    deinit_step(DeinitSurface());
-    deinit_step(DeinitWindow());
+    deinit_step(DeinitSwapchainImages());
+    deinit_step(DeinitSwapchain());
     deinit_step(DeinitQueue());
+    deinit_step(DeinitSurface());
+    deinit_step(window.Close());
     deinit_step(DeinitDevice());
     deinit_step(DeinitDebugReport());
     deinit_step(DeinitInstance());
@@ -49,14 +57,14 @@ bool vkEngine::InitInstance()
 
     {
         uint32_t amountOfAvailableLayers = 0;
-        vkEnumerateInstanceLayerProperties(&amountOfAvailableLayers, nullptr);
+        vk_assert(vkEnumerateInstanceLayerProperties(&amountOfAvailableLayers, nullptr));
         VkLayerProperties* available_layers = new VkLayerProperties[amountOfAvailableLayers];
-        vkEnumerateInstanceLayerProperties(&amountOfAvailableLayers, available_layers);
+        vk_assert(vkEnumerateInstanceLayerProperties(&amountOfAvailableLayers, available_layers));
         
         uint32_t amountOfAvailableExtensions = 0;
-        vkEnumerateInstanceExtensionProperties(nullptr, &amountOfAvailableExtensions, nullptr);
+        vk_assert(vkEnumerateInstanceExtensionProperties(nullptr, &amountOfAvailableExtensions, nullptr));
         VkExtensionProperties* available_extensions = new VkExtensionProperties[amountOfAvailableExtensions];
-        vkEnumerateInstanceExtensionProperties(nullptr, &amountOfAvailableExtensions, available_extensions);
+        vk_assert(vkEnumerateInstanceExtensionProperties(nullptr, &amountOfAvailableExtensions, available_extensions));
         
         {
             for (uint32_t i = 0; i < amountOfAvailableLayers; i++) {
@@ -185,9 +193,7 @@ bool vkEngine::InitDevice()
 
     for (uint32_t i = 0; i < amountOfPhysicalDevices; i++) {
         if (DeviceExtensionsSupport(physical_device_list[i], &required_extension_list, amountOfRequieredExtension)) {
-            uint32_t queue_family_index = 0;
-
-            if (GetQueueFamily(physical_device_list[i], VkQueueFlagBits::VK_QUEUE_TRANSFER_BIT | VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT, queue_family_index)) {
+            if (GetQueueFamily(physical_device_list[i], VkQueueFlagBits::VK_QUEUE_TRANSFER_BIT | VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT, graphics_queue_family_index)) {
                 vkGetPhysicalDeviceFeatures(physical_device_list[i], &physical_device_features);
                 vkGetPhysicalDeviceProperties(physical_device_list[i], &physical_device_properties);
                 vkGetPhysicalDeviceMemoryProperties(physical_device_list[i], &physical_device_memory_properties);
@@ -208,7 +214,7 @@ bool vkEngine::InitDevice()
     device_queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
     device_queue_create_info.pNext = nullptr;
     device_queue_create_info.flags = 0;
-    device_queue_create_info.queueFamilyIndex = graphic_queue_family_index;
+    device_queue_create_info.queueFamilyIndex = graphics_queue_family_index;
     device_queue_create_info.queueCount = 1;
     device_queue_create_info.pQueuePriorities = queue_priorities;
 
@@ -243,17 +249,6 @@ void vkEngine::DeinitQueue()
 {
 }
 
-bool vkEngine::InitWindow()
-{
-    window.Open(800, 480, L"_test_");
-    return true;
-}
-
-void vkEngine::DeinitWindow()
-{
-    window.Close();
-}
-
 bool vkEngine::InitSurface()
 {
     VkWin32SurfaceCreateInfoKHR surface_create_info;
@@ -271,14 +266,112 @@ void vkEngine::DeinitSurface()
     vkDestroySurfaceKHR(instance, surface, nullptr);
 }
 
+bool vkEngine::InitSwapchain()
+{
+    VkBool32 surfaceSupport = VK_FALSE;
+    vk_assert(vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, graphics_queue_family_index, surface, &surfaceSupport));
+
+    if (!surfaceSupport) {
+        std::cout << "Surface is not supported!\n";
+        return false;
+    }
+
+    {
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities);
+
+        amountOfSurfaceFormats = 0;
+        vk_assert(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &amountOfSurfaceFormats, nullptr));
+        supported_surface_format_list = new VkSurfaceFormatKHR[amountOfSurfaceFormats];
+        vk_assert(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &amountOfSurfaceFormats, supported_surface_format_list));
+
+        amountOfSurfacePresentationModes = 0;
+        vk_assert(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &amountOfSurfacePresentationModes, nullptr));
+        supported_presentation_mode_list = new VkPresentModeKHR[amountOfSurfacePresentationModes];
+        vk_assert(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &amountOfSurfacePresentationModes, supported_presentation_mode_list));
+    }
+
+    VkSwapchainCreateInfoKHR swapchain_create_info = {};
+    swapchain_create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    swapchain_create_info.pNext = nullptr;
+    swapchain_create_info.flags = 0;
+    swapchain_create_info.surface = surface;
+    swapchain_create_info.minImageCount = surface_capabilities.minImageCount;                   //
+    swapchain_create_info.imageFormat = supported_surface_format_list[0].format;                // TODO: later find optimal
+    swapchain_create_info.imageColorSpace = supported_surface_format_list[0].colorSpace;        //
+    swapchain_create_info.imageExtent = window.GetSize();
+    swapchain_create_info.imageArrayLayers = 1;
+    swapchain_create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    swapchain_create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    swapchain_create_info.queueFamilyIndexCount = 0;
+    swapchain_create_info.pQueueFamilyIndices = nullptr;
+    swapchain_create_info.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+    swapchain_create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    swapchain_create_info.presentMode = supported_presentation_mode_list[0];                    // TODO: later find optimal 
+    swapchain_create_info.clipped = VK_TRUE;
+    swapchain_create_info.oldSwapchain = VK_NULL_HANDLE;
+
+    //delete[] surface_format_list;
+    //delete[] presentation_mode_list;
+
+    return vk_verify(vkCreateSwapchainKHR(device, &swapchain_create_info, nullptr, &swapchain));
+}
+
+void vkEngine::DeinitSwapchain()
+{
+    vkDestroySwapchainKHR(device, swapchain, nullptr);
+}
+
+bool vkEngine::InitSwapchainImages()
+{
+    amountOfSwapchainImages = 0;
+    vk_assert(vkGetSwapchainImagesKHR(device, swapchain, &amountOfSwapchainImages, nullptr));
+    VkImage* swapchainImages = new VkImage[amountOfSwapchainImages];
+    vk_assert(vkGetSwapchainImagesKHR(device, swapchain, &amountOfSwapchainImages, swapchainImages));
+
+    imageViews = new VkImageView[amountOfSwapchainImages];
+
+    for (uint32_t i = 0; i < amountOfSwapchainImages; i++) {
+        VkImageViewCreateInfo imageView_create_info = {};
+        imageView_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        imageView_create_info.pNext = nullptr;
+        imageView_create_info.flags = 0;
+        imageView_create_info.image = swapchainImages[0];
+        imageView_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        imageView_create_info.format = supported_surface_format_list[0].format;
+        imageView_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        imageView_create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        imageView_create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        imageView_create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        imageView_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageView_create_info.subresourceRange.baseArrayLayer = 0;
+        imageView_create_info.subresourceRange.baseMipLevel = 0;
+        imageView_create_info.subresourceRange.layerCount = 1;
+        imageView_create_info.subresourceRange.levelCount = 1;
+
+        vk_assert(vkCreateImageView(device, &imageView_create_info, nullptr, &imageViews[i]));
+    }
+
+    
+    return false;
+}
+
+void vkEngine::DeinitSwapchainImages()
+{
+    for (uint32_t i = 0; i < amountOfSwapchainImages; i++) {
+        vkDestroyImageView(device, imageViews[i], nullptr);
+    };
+
+    delete[] imageViews;
+}
+
 //---------------
 
 bool vkEngine::DeviceExtensionsSupport(const VkPhysicalDevice& pysicalDevice, const char** requiredExtensions, uint32_t extensionCount)
 {
     uint32_t amountOfExtensions = 0;
-    vkEnumerateDeviceExtensionProperties(pysicalDevice, nullptr, &amountOfExtensions, nullptr);
+    vk_assert(vkEnumerateDeviceExtensionProperties(pysicalDevice, nullptr, &amountOfExtensions, nullptr));
     VkExtensionProperties* extension_list = new VkExtensionProperties[amountOfExtensions];
-    vkEnumerateDeviceExtensionProperties(pysicalDevice, nullptr, &amountOfExtensions, extension_list);
+    vk_assert(vkEnumerateDeviceExtensionProperties(pysicalDevice, nullptr, &amountOfExtensions, extension_list));
 
     bool founded;
 
