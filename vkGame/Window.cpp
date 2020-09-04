@@ -109,17 +109,17 @@ bool Window::Update()
 	return _run;
 }
 
-HINSTANCE& Window::GetInstance()
+const HINSTANCE& Window::GetInstance()
 {
 	return _instance;
 }
 
-HWND& Window::GetHandle()
+const HWND& Window::GetHandle()
 {
 	return _window;
 }
 
-VkExtent2D& Window::GetSize()
+const VkExtent2D& Window::GetSize()
 {
 	return _surface_size;
 }

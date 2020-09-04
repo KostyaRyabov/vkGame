@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pch.h"
+#include <fstream>
 #include "Settings.h"
 
 static uint8_t	step_counter = 0;
@@ -72,17 +73,23 @@ private:
 	VkSurfaceKHR							surface;
 	VkSurfaceCapabilitiesKHR				surface_capabilities;
 	
-	uint32_t								amountOfSurfaceFormats;
-	VkSurfaceFormatKHR*						supported_surface_format_list;
+	std::vector<VkSurfaceFormatKHR>			supported_surface_format_list;
+	std::vector<VkPresentModeKHR>			supported_presentation_mode_list;
 
-	uint32_t								amountOfSurfacePresentationModes;
-	VkPresentModeKHR*						supported_presentation_mode_list;
-
+	uint32_t								amountOfImagesInSwapchain;
 	VkSwapchainKHR							swapchain;
 	Window									window;
 
-	uint32_t amountOfSwapchainImages;
-	VkImageView*							imageViews;
+	VkImageView*							image_view_list;
+
+	VkShaderModule							shader_module_vert;
+	VkShaderModule							shader_module_frag;
+	VkPipelineLayout						pipeline_layout							=		VK_NULL_HANDLE;
+	VkRenderPass							render_pass;
+	VkPipeline								pipeline;
+	VkFramebuffer*							framebuffers;
+
+	//------------
 
 	bool InitInstance();
 	void DeinitInstance();
@@ -105,9 +112,17 @@ private:
 	bool InitSwapchainImages();
 	void DeinitSwapchainImages();
 
+	bool InitPipeline();
+	void DeinitPipeline();
+
+	bool InitFramebuffer();
+	void DeinitFramebuffer();
+
+	bool CreateShaderModule(const char* filename, VkShaderModule* shader_module);
+
 	//-------------
 
-	bool DeviceExtensionsSupport(const VkPhysicalDevice& physicalDevice, const char** requiredExtensions, uint32_t extensionCount);
+	bool DeviceExtensionsSupport(const VkPhysicalDevice& pysicalDevice, std::vector<const char*>& requiredExtensions);
 	bool GetQueueFamily(const VkPhysicalDevice& physicalDevice, int flags, uint32_t& returnedFamilyIndex);
 };
 

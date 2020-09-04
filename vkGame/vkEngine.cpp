@@ -6,20 +6,20 @@ vkEngine::vkEngine() {
     init_step(InitDevice());
     init_step(window.Create(800, 480, L"_test_"));
     init_step(InitSurface());
-
-    window.Open();
-    
     init_step(InitQueue());
     init_step(InitSwapchain());
-
     init_step(InitSwapchainImages());
-
+    init_step(InitPipeline());
+    init_step(InitFramebuffer());
+    window.Open();
     Run();
 }
 
 vkEngine::~vkEngine() {
     vkDeviceWaitIdle(device);
 
+    deinit_step(DeinitFramebuffer());
+    deinit_step(DeinitPipeline());
     deinit_step(DeinitSwapchainImages());
     deinit_step(DeinitSwapchain());
     deinit_step(DeinitQueue());
@@ -41,54 +41,50 @@ bool vkEngine::InitInstance()
     app_info.engineVersion = VK_MAKE_VERSION(0, 0, 1);
     app_info.apiVersion = VK_API_VERSION_1_2;
 
-    const uint8_t amountOfLayers = 3;
-    const char* layers[amountOfLayers] = {
+    std::vector<const char*> requierd_layer_list{
         "VK_LAYER_LUNARG_standard_validation",
         "VK_LAYER_KHRONOS_validation",
         "VK_LAYER_AMD_switchable_graphics"
     };
 
-    const uint8_t amountOfExtensions = 3;
-    const char* extensions[amountOfExtensions] = {
+    std::vector<const char*> requiered_extension_list{
         "VK_EXT_debug_report",
         "VK_KHR_surface",
         VK_KHR_WIN32_SURFACE_EXTENSION_NAME
     };
 
     {
-        uint32_t amountOfAvailableLayers = 0;
-        vk_assert(vkEnumerateInstanceLayerProperties(&amountOfAvailableLayers, nullptr));
-        VkLayerProperties* available_layers = new VkLayerProperties[amountOfAvailableLayers];
-        vk_assert(vkEnumerateInstanceLayerProperties(&amountOfAvailableLayers, available_layers));
+        uint32_t count = 0;
+        vk_assert(vkEnumerateInstanceLayerProperties(&count, nullptr));
+        std::vector<VkLayerProperties> available_layer_list(count);
+        vk_assert(vkEnumerateInstanceLayerProperties(&count, available_layer_list.data()));
         
-        uint32_t amountOfAvailableExtensions = 0;
-        vk_assert(vkEnumerateInstanceExtensionProperties(nullptr, &amountOfAvailableExtensions, nullptr));
-        VkExtensionProperties* available_extensions = new VkExtensionProperties[amountOfAvailableExtensions];
-        vk_assert(vkEnumerateInstanceExtensionProperties(nullptr, &amountOfAvailableExtensions, available_extensions));
+        count = 0;
+        vk_assert(vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr));
+        std::vector<VkExtensionProperties> available_extension_list(count);
+        vk_assert(vkEnumerateInstanceExtensionProperties(nullptr, &count, available_extension_list.data()));
         
         {
-            for (uint32_t i = 0; i < amountOfAvailableLayers; i++) {
-                std::cout << "layer #" << i << std::endl;
-
-                std::cout << "layer_name        : " << available_layers[i].layerName << std::endl;
-                std::cout << "layer_description : " << available_layers[i].description << std::endl << std::endl;
+            std::cout << "layers :\n";
+            for (auto &layer : available_layer_list) {
+                std::cout << "\t" << layer.layerName << std::endl;
             }
 
-            for (uint32_t i = 0; i < amountOfAvailableExtensions; i++) {
-                std::cout << "extansion #" << i << std::endl;
-
-                std::cout << "extansion_name : " << available_extensions[i].extensionName << std::endl << std::endl;
+            std::cout << "\nextansions :\n";
+            for (auto &extension : available_extension_list) {
+                std::cout << "\t" << extension.extensionName << std::endl;
             }
+            std::cout << std::endl;
         }
 
         {
             bool founded;
 
-            for (int i = 0; i < amountOfLayers; i++) {
+            for (auto& required_layer : requierd_layer_list) {
                 founded = false;
 
-                for (int j = 0; j < amountOfAvailableLayers; j++) {
-                    if (!strcmp(available_layers[j].layerName, layers[i])) {
+                for (auto& available_layer : available_layer_list) {
+                    if (!strcmp(available_layer.layerName, required_layer)) {
                         founded = true;
                         break;
                     }
@@ -97,26 +93,19 @@ bool vkEngine::InitInstance()
                 if (!founded) return false;
             }
 
-            for (int i = 0; i < amountOfExtensions; i++) {
+            for (auto& required_extension : requiered_extension_list) {
                 founded = false;
 
-                for (int j = 0; j < amountOfAvailableExtensions; j++) {
-                    if (!strcmp(available_extensions[j].extensionName, extensions[i])) {
+                for (auto& available_extension : available_extension_list) {
+                    if (!strcmp(available_extension.extensionName, required_extension)) {
                         founded = true;
                         break;
                     }
                 }
 
-                if (!founded) {
-                    delete[] available_layers;
-                    delete[] available_extensions;
-                    return false;
-                }
+                if (!founded) return false;
             }
         }
-
-        delete[] available_layers;
-        delete[] available_extensions;
     }
 
     VkInstanceCreateInfo instance_create_info = {};
@@ -124,10 +113,10 @@ bool vkEngine::InitInstance()
     instance_create_info.pNext = nullptr;
     instance_create_info.flags = NULL;
     instance_create_info.pApplicationInfo = &app_info;
-    instance_create_info.enabledLayerCount = amountOfLayers;
-    instance_create_info.ppEnabledLayerNames = layers;
-    instance_create_info.enabledExtensionCount = amountOfExtensions;
-    instance_create_info.ppEnabledExtensionNames = extensions;
+    instance_create_info.enabledLayerCount = requierd_layer_list.size();
+    instance_create_info.ppEnabledLayerNames = requierd_layer_list.data();
+    instance_create_info.enabledExtensionCount = requiered_extension_list.size();
+    instance_create_info.ppEnabledExtensionNames = requiered_extension_list.data();
     
     return vk_verify(vkCreateInstance(&instance_create_info, nullptr, &instance));
 }
@@ -166,18 +155,16 @@ void vkEngine::DeinitDebugReport()
 
 bool vkEngine::InitDevice()
 {
-    uint32_t amountOfPhysicalDevices = 0;
-    vk_assert(vkEnumeratePhysicalDevices(instance, &amountOfPhysicalDevices, nullptr));
-    VkPhysicalDevice* physical_device_list = new VkPhysicalDevice[amountOfPhysicalDevices];
-    vk_assert(vkEnumeratePhysicalDevices(instance, &amountOfPhysicalDevices, physical_device_list));
+    uint32_t count = 0;
+    vk_assert(vkEnumeratePhysicalDevices(instance, &count, nullptr));
+    std::vector<VkPhysicalDevice> physical_device_list(count);
+    vk_assert(vkEnumeratePhysicalDevices(instance, &count, physical_device_list.data()));
 
     // show Physical Device list
-    for (uint32_t i = 0; i < amountOfPhysicalDevices; i++) {
-        std::cout << "physical_device #" << i << std::endl;
-
-        vkGetPhysicalDeviceProperties(physical_device_list[i], &physical_device_properties);
-        vkGetPhysicalDeviceFeatures(physical_device_list[i], &physical_device_features);
-        vkGetPhysicalDeviceMemoryProperties(physical_device_list[i], &physical_device_memory_properties);
+    for (auto &physicalDevice : physical_device_list) {
+        vkGetPhysicalDeviceProperties(physicalDevice, &physical_device_properties);
+        vkGetPhysicalDeviceFeatures(physicalDevice, &physical_device_features);
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice, &physical_device_memory_properties);
 
         std::cout << "deviceName : " << physical_device_properties.deviceName << std::endl;
         std::cout << "apiVersion : "
@@ -186,26 +173,24 @@ bool vkEngine::InitDevice()
             << VK_VERSION_PATCH(physical_device_properties.apiVersion) << std::endl << std::endl;
     }
 
-    uint32_t amountOfRequieredExtension = 1;
-    const char* required_extension_list = {
+    std::vector<const char*> required_extension_list = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME
     };
 
-    for (uint32_t i = 0; i < amountOfPhysicalDevices; i++) {
-        if (DeviceExtensionsSupport(physical_device_list[i], &required_extension_list, amountOfRequieredExtension)) {
-            if (GetQueueFamily(physical_device_list[i], VkQueueFlagBits::VK_QUEUE_TRANSFER_BIT | VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT, graphics_queue_family_index)) {
-                vkGetPhysicalDeviceFeatures(physical_device_list[i], &physical_device_features);
-                vkGetPhysicalDeviceProperties(physical_device_list[i], &physical_device_properties);
-                vkGetPhysicalDeviceMemoryProperties(physical_device_list[i], &physical_device_memory_properties);
+    for (auto& physicalDevice : physical_device_list) {
+        if (DeviceExtensionsSupport(physicalDevice, required_extension_list)) {
+            if (GetQueueFamily(physicalDevice, VkQueueFlagBits::VK_QUEUE_TRANSFER_BIT | VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT, graphics_queue_family_index)) {
+                vkGetPhysicalDeviceFeatures(physicalDevice, &physical_device_features);
+                vkGetPhysicalDeviceProperties(physicalDevice, &physical_device_properties);
+                vkGetPhysicalDeviceMemoryProperties(physicalDevice, &physical_device_memory_properties);
 
                 //поиск необходимых характеристик
 
-                physical_device = physical_device_list[i];
+                physical_device = physicalDevice;
             }
         }
     }
 
-    delete[] physical_device_list;
     if (physical_device == VK_NULL_HANDLE) return false;
 
     float queue_priorities[] = {1.0f};  // add for multithreading
@@ -226,8 +211,8 @@ bool vkEngine::InitDevice()
     device_create_info.pQueueCreateInfos = &device_queue_create_info;
     device_create_info.enabledLayerCount = 0;
     device_create_info.ppEnabledLayerNames = nullptr;
-    device_create_info.enabledExtensionCount = amountOfRequieredExtension;
-    device_create_info.ppEnabledExtensionNames = &required_extension_list;
+    device_create_info.enabledExtensionCount = required_extension_list.size();
+    device_create_info.ppEnabledExtensionNames = required_extension_list.data();
     device_create_info.pEnabledFeatures = &physical_device_features;
 
     // Pick "best device"
@@ -279,15 +264,15 @@ bool vkEngine::InitSwapchain()
     {
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities);
 
-        amountOfSurfaceFormats = 0;
-        vk_assert(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &amountOfSurfaceFormats, nullptr));
-        supported_surface_format_list = new VkSurfaceFormatKHR[amountOfSurfaceFormats];
-        vk_assert(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &amountOfSurfaceFormats, supported_surface_format_list));
+        uint32_t count = 0;
+        vk_assert(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, nullptr));
+        supported_surface_format_list.resize(count);
+        vk_assert(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, supported_surface_format_list.data()));
 
-        amountOfSurfacePresentationModes = 0;
-        vk_assert(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &amountOfSurfacePresentationModes, nullptr));
-        supported_presentation_mode_list = new VkPresentModeKHR[amountOfSurfacePresentationModes];
-        vk_assert(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &amountOfSurfacePresentationModes, supported_presentation_mode_list));
+        count = 0;
+        vk_assert(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, nullptr));
+        supported_presentation_mode_list.resize(count);
+        vk_assert(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, supported_presentation_mode_list.data()));
     }
 
     VkSwapchainCreateInfoKHR swapchain_create_info = {};
@@ -310,9 +295,6 @@ bool vkEngine::InitSwapchain()
     swapchain_create_info.clipped = VK_TRUE;
     swapchain_create_info.oldSwapchain = VK_NULL_HANDLE;
 
-    //delete[] surface_format_list;
-    //delete[] presentation_mode_list;
-
     return vk_verify(vkCreateSwapchainKHR(device, &swapchain_create_info, nullptr, &swapchain));
 }
 
@@ -323,19 +305,19 @@ void vkEngine::DeinitSwapchain()
 
 bool vkEngine::InitSwapchainImages()
 {
-    amountOfSwapchainImages = 0;
-    vk_assert(vkGetSwapchainImagesKHR(device, swapchain, &amountOfSwapchainImages, nullptr));
-    VkImage* swapchainImages = new VkImage[amountOfSwapchainImages];
-    vk_assert(vkGetSwapchainImagesKHR(device, swapchain, &amountOfSwapchainImages, swapchainImages));
+    amountOfImagesInSwapchain = 0;
+    vk_assert(vkGetSwapchainImagesKHR(device, swapchain, &amountOfImagesInSwapchain, nullptr));
+    VkImage* swapchain_image_list = new VkImage[amountOfImagesInSwapchain];
+    vk_assert(vkGetSwapchainImagesKHR(device, swapchain, &amountOfImagesInSwapchain, swapchain_image_list));
 
-    imageViews = new VkImageView[amountOfSwapchainImages];
+    image_view_list = new VkImageView[amountOfImagesInSwapchain];
 
-    for (uint32_t i = 0; i < amountOfSwapchainImages; i++) {
+    for (uint32_t i = 0; i < amountOfImagesInSwapchain; i++) {
         VkImageViewCreateInfo imageView_create_info = {};
         imageView_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         imageView_create_info.pNext = nullptr;
         imageView_create_info.flags = 0;
-        imageView_create_info.image = swapchainImages[0];
+        imageView_create_info.image = swapchain_image_list[0];
         imageView_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
         imageView_create_info.format = supported_surface_format_list[0].format;
         imageView_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -348,50 +330,294 @@ bool vkEngine::InitSwapchainImages()
         imageView_create_info.subresourceRange.layerCount = 1;
         imageView_create_info.subresourceRange.levelCount = 1;
 
-        vk_assert(vkCreateImageView(device, &imageView_create_info, nullptr, &imageViews[i]));
-    }
-
+        vk_assert(vkCreateImageView(device, &imageView_create_info, nullptr, &image_view_list[i]));
+    };
     
-    return false;
+    return true;
 }
 
 void vkEngine::DeinitSwapchainImages()
 {
-    for (uint32_t i = 0; i < amountOfSwapchainImages; i++) {
-        vkDestroyImageView(device, imageViews[i], nullptr);
+    for (uint32_t i = 0; i < amountOfImagesInSwapchain; i++) {
+        vkDestroyImageView(device, image_view_list[i], nullptr);
     };
 
-    delete[] imageViews;
+    delete[] image_view_list;
+}
+
+bool vkEngine::InitPipeline()
+{
+    CreateShaderModule("vert.spv", &shader_module_vert);
+    CreateShaderModule("frag.spv", &shader_module_frag);
+
+    VkPipelineShaderStageCreateInfo shader_stage_create_info_vert;
+    shader_stage_create_info_vert.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shader_stage_create_info_vert.pNext = nullptr;
+    shader_stage_create_info_vert.flags = 0;
+    shader_stage_create_info_vert.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    shader_stage_create_info_vert.module = shader_module_vert;
+    shader_stage_create_info_vert.pName = "main";
+    shader_stage_create_info_vert.pSpecializationInfo = nullptr;
+
+    VkPipelineShaderStageCreateInfo shader_stage_create_info_frag;
+    shader_stage_create_info_frag.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shader_stage_create_info_frag.pNext = nullptr;
+    shader_stage_create_info_frag.flags = 0;
+    shader_stage_create_info_frag.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    shader_stage_create_info_frag.module = shader_module_frag;
+    shader_stage_create_info_frag.pName = "main";
+    shader_stage_create_info_frag.pSpecializationInfo = nullptr;
+
+    VkPipelineShaderStageCreateInfo shader_stages_create_info[] = { shader_stage_create_info_vert, shader_stage_create_info_frag };
+
+    VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info = {};
+    vertex_input_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertex_input_state_create_info.pNext = nullptr;
+    vertex_input_state_create_info.flags = 0;
+    vertex_input_state_create_info.vertexBindingDescriptionCount = 0;
+    vertex_input_state_create_info.pVertexBindingDescriptions = nullptr;
+    vertex_input_state_create_info.vertexAttributeDescriptionCount = 0;
+    vertex_input_state_create_info.pVertexAttributeDescriptions = nullptr;
+
+    VkPipelineInputAssemblyStateCreateInfo input_assembly_state_create_info = {};
+    input_assembly_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    input_assembly_state_create_info.pNext = nullptr;
+    input_assembly_state_create_info.flags = 0;
+    input_assembly_state_create_info.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    input_assembly_state_create_info.primitiveRestartEnable = VK_FALSE;
+
+    VkViewport viewport;
+    viewport.x = 0;
+    viewport.y = 0;
+    viewport.width = window.GetSize().width;
+    viewport.height = window.GetSize().height;
+    viewport.minDepth = 0;
+    viewport.maxDepth = 1;
+
+    VkRect2D scissor;
+    scissor.extent = { window.GetSize().width, window.GetSize().height };
+    scissor.offset = { 0,0 };
+
+    VkPipelineViewportStateCreateInfo viewport_state_create_info = {};
+    viewport_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewport_state_create_info.pNext = nullptr;
+    viewport_state_create_info.flags = 0;
+    viewport_state_create_info.viewportCount = 1;
+    viewport_state_create_info.pViewports = &viewport;
+    viewport_state_create_info.scissorCount = 1;
+    viewport_state_create_info.pScissors = &scissor;
+    
+    VkPipelineRasterizationStateCreateInfo rasterization_state_create_info = {};
+    rasterization_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterization_state_create_info.pNext = nullptr;
+    rasterization_state_create_info.flags = 0;
+    rasterization_state_create_info.depthClampEnable = VK_FALSE;
+    rasterization_state_create_info.rasterizerDiscardEnable = VK_FALSE;
+    rasterization_state_create_info.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterization_state_create_info.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterization_state_create_info.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterization_state_create_info.depthBiasEnable = VK_FALSE;
+    rasterization_state_create_info.depthBiasConstantFactor = 0.0f;
+    rasterization_state_create_info.depthBiasClamp = 0.0f;
+    rasterization_state_create_info.depthBiasSlopeFactor = 0.0f;
+    rasterization_state_create_info.lineWidth = 1.0f;
+
+    VkPipelineMultisampleStateCreateInfo multisample_state_create_info = {};
+    multisample_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisample_state_create_info.pNext = nullptr;
+    multisample_state_create_info.flags = 0;
+    multisample_state_create_info.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    multisample_state_create_info.sampleShadingEnable = VK_FALSE;
+    multisample_state_create_info.minSampleShading = 1.0f;
+    multisample_state_create_info.pSampleMask = nullptr;
+    multisample_state_create_info.alphaToCoverageEnable = VK_FALSE;
+    multisample_state_create_info.alphaToOneEnable = VK_FALSE;
+
+    VkPipelineColorBlendAttachmentState color_blend_attachment_state = {};
+    color_blend_attachment_state.blendEnable = VK_FALSE;
+    color_blend_attachment_state.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    color_blend_attachment_state.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    color_blend_attachment_state.colorBlendOp = VK_BLEND_OP_ADD;
+    color_blend_attachment_state.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    color_blend_attachment_state.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    color_blend_attachment_state.alphaBlendOp = VK_BLEND_OP_ADD;
+    color_blend_attachment_state.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+    VkPipelineColorBlendStateCreateInfo color_blend_state_create_info = {};
+    color_blend_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    color_blend_state_create_info.pNext = nullptr;
+    color_blend_state_create_info.flags = 0;
+    color_blend_state_create_info.logicOpEnable = VK_FALSE;
+    color_blend_state_create_info.logicOp = VK_LOGIC_OP_NO_OP;
+    color_blend_state_create_info.attachmentCount = 1;
+    color_blend_state_create_info.pAttachments = &color_blend_attachment_state;
+    color_blend_state_create_info.blendConstants[0] = 0.0f;
+    color_blend_state_create_info.blendConstants[1] = 0.0f;
+    color_blend_state_create_info.blendConstants[2] = 0.0f;
+    color_blend_state_create_info.blendConstants[3] = 0.0f;
+
+    VkPipelineLayoutCreateInfo pipeline_layout_create_info = {};
+    pipeline_layout_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipeline_layout_create_info.pNext = nullptr;
+    pipeline_layout_create_info.flags = 0;
+    pipeline_layout_create_info.setLayoutCount = 0;
+    pipeline_layout_create_info.pSetLayouts = nullptr;
+    pipeline_layout_create_info.pushConstantRangeCount = 0;
+    pipeline_layout_create_info.pPushConstantRanges = nullptr;
+
+    vk_assert(vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, &pipeline_layout));
+
+    VkAttachmentDescription attachment_description = {};
+    attachment_description.flags = 0;
+    attachment_description.format = supported_surface_format_list[0].format;
+    attachment_description.samples = VK_SAMPLE_COUNT_1_BIT;
+    attachment_description.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment_description.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachment_description.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_description.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachment_description.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkAttachmentReference attachment_reference = {};
+    attachment_reference.attachment = 0;
+    attachment_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass_description = {};
+    subpass_description.flags = 0;
+    subpass_description.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass_description.inputAttachmentCount = 0;
+    subpass_description.pInputAttachments = nullptr;
+    subpass_description.colorAttachmentCount = 1;
+    subpass_description.pColorAttachments = &attachment_reference;
+    subpass_description.pResolveAttachments = nullptr;
+    subpass_description.pDepthStencilAttachment = nullptr;
+    subpass_description.preserveAttachmentCount = 0;
+    subpass_description.pPreserveAttachments = nullptr;
+
+    VkRenderPassCreateInfo render_pass_create_info = {};
+    render_pass_create_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    render_pass_create_info.pNext = nullptr;
+    render_pass_create_info.flags = 0;
+    render_pass_create_info.attachmentCount = 1;
+    render_pass_create_info.pAttachments = &attachment_description;
+    render_pass_create_info.subpassCount = 1;
+    render_pass_create_info.pSubpasses = &subpass_description;
+    render_pass_create_info.dependencyCount = 0;
+    render_pass_create_info.pDependencies = nullptr;
+
+    vk_assert(vkCreateRenderPass(device, &render_pass_create_info, nullptr, &render_pass));
+
+    VkGraphicsPipelineCreateInfo pipeline_create_info = {};
+    pipeline_create_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipeline_create_info.pNext = nullptr;
+    pipeline_create_info.flags = 0;
+    pipeline_create_info.stageCount = 2;
+    pipeline_create_info.pStages = shader_stages_create_info;
+    pipeline_create_info.pVertexInputState = &vertex_input_state_create_info;
+    pipeline_create_info.pInputAssemblyState = &input_assembly_state_create_info;
+    pipeline_create_info.pTessellationState = nullptr;
+    pipeline_create_info.pViewportState = &viewport_state_create_info;
+    pipeline_create_info.pRasterizationState = &rasterization_state_create_info;
+    pipeline_create_info.pMultisampleState = &multisample_state_create_info;
+    pipeline_create_info.pDepthStencilState = nullptr;
+    pipeline_create_info.pColorBlendState = &color_blend_state_create_info;
+    pipeline_create_info.pDynamicState = nullptr;
+    pipeline_create_info.layout = pipeline_layout;
+    pipeline_create_info.renderPass = render_pass;
+    pipeline_create_info.subpass = 0;
+    pipeline_create_info.basePipelineHandle = VK_NULL_HANDLE;
+    pipeline_create_info.basePipelineIndex = -1;
+
+    return vk_verify(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_create_info, nullptr, &pipeline));
+}
+
+void vkEngine::DeinitPipeline()
+{
+    vkDestroyPipeline(device, pipeline, nullptr);
+    vkDestroyRenderPass(device, render_pass, nullptr);
+    vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
+    vkDestroyShaderModule(device, shader_module_vert, nullptr);
+    vkDestroyShaderModule(device, shader_module_frag, nullptr);
+}
+
+bool vkEngine::InitFramebuffer()
+{
+    framebuffers = new VkFramebuffer[amountOfImagesInSwapchain];
+
+    for (uint32_t i = 0; i < amountOfImagesInSwapchain; i++) {
+        VkFramebufferCreateInfo framebuffer_create_info = {};
+        framebuffer_create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebuffer_create_info.pNext = nullptr;
+        framebuffer_create_info.flags = 0;
+        framebuffer_create_info.renderPass = render_pass;
+        framebuffer_create_info.attachmentCount = 1;
+        framebuffer_create_info.pAttachments = &image_view_list[i];
+        framebuffer_create_info.width = window.GetSize().width;
+        framebuffer_create_info.height = window.GetSize().height;
+        framebuffer_create_info.layers = 1;
+
+        vk_assert(vkCreateFramebuffer(device, &framebuffer_create_info, nullptr, &framebuffers[i]));
+    };
+
+    return true;
+}
+
+void vkEngine::DeinitFramebuffer()
+{
+    for (uint32_t i = 0; i < amountOfImagesInSwapchain; i++) {
+        vkDestroyFramebuffer(device, framebuffers[i], nullptr);
+    };
+
+    delete[] framebuffers;
+}
+
+bool vkEngine::CreateShaderModule(const char* filename, VkShaderModule *shader_module)
+{
+    std::ifstream file(filename, std::ios::binary | std::ios::ate);
+
+    if (!file) return false;
+    
+    size_t fileSize = file.tellg();
+    std::vector<char> shaderCode(fileSize);
+    file.seekg(0);
+    file.read(shaderCode.data(), fileSize);
+    file.close();
+    std::cout << filename << " is loaded!\n";
+
+    VkShaderModuleCreateInfo shader_module_create_info = {};
+    shader_module_create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    shader_module_create_info.pNext = nullptr;
+    shader_module_create_info.flags = 0;
+    shader_module_create_info.codeSize = shaderCode.size();
+    shader_module_create_info.pCode = reinterpret_cast<const uint32_t*>(shaderCode.data());
+
+    return vk_verify(vkCreateShaderModule(device, &shader_module_create_info, nullptr, shader_module));
 }
 
 //---------------
 
-bool vkEngine::DeviceExtensionsSupport(const VkPhysicalDevice& pysicalDevice, const char** requiredExtensions, uint32_t extensionCount)
+bool vkEngine::DeviceExtensionsSupport(const VkPhysicalDevice& pysicalDevice, std::vector<const char*>& requiredExtensions)
 {
-    uint32_t amountOfExtensions = 0;
-    vk_assert(vkEnumerateDeviceExtensionProperties(pysicalDevice, nullptr, &amountOfExtensions, nullptr));
-    VkExtensionProperties* extension_list = new VkExtensionProperties[amountOfExtensions];
-    vk_assert(vkEnumerateDeviceExtensionProperties(pysicalDevice, nullptr, &amountOfExtensions, extension_list));
+    uint32_t count = 0;
+    vk_assert(vkEnumerateDeviceExtensionProperties(pysicalDevice, nullptr, &count, nullptr));
+    std::vector<VkExtensionProperties> available_extension_list(count);
+    vk_assert(vkEnumerateDeviceExtensionProperties(pysicalDevice, nullptr, &count, available_extension_list.data()));
 
     bool founded;
 
-    for (uint32_t i = 0; i < extensionCount; i++) {
+    for (auto& required_extension : requiredExtensions) {
         founded = false;
 
-        for (uint32_t j = 0; j < amountOfExtensions; j++) {
-            if (!strcmp(extension_list[j].extensionName, requiredExtensions[i])) {
+        for (auto& available_extension : available_extension_list) {
+            if (!strcmp(available_extension.extensionName, required_extension)) {
                 founded = true;
                 break;
             }
         }
 
-        if (!founded) {
-            delete[] extension_list;
-            return false;
-        }
-    }
+        if (!founded) return false;
+    };
 
-    delete[] extension_list;
     return true;
 }
 
