@@ -6,23 +6,19 @@ public:
 	Window();
 	~Window();
 
-	bool					Create(uint32_t size_x, uint32_t size_y, const wchar_t* name);
+	bool					Create();
 	void					Open();
 	void					Close();
 
 	bool					Update();
 
-	const HINSTANCE&		GetInstance();
-	const HWND&				GetHandle();
-	const VkExtent2D&		GetSize();
+	const HINSTANCE& GetInstance();
+	const HWND& GetHandle();
 private:
-	bool					_run			= false;
+	bool					_run = false;
 
-	VkExtent2D				_surface_size;
+	HINSTANCE				_instance = GetModuleHandle(nullptr);
+	HWND					_window = NULL;
 
-	HINSTANCE				_instance		= GetModuleHandle(nullptr);
-	HWND					_window			= NULL;
-
-	const wchar_t*			_window_name;
+	const wchar_t* _window_name = L"[test]";
 };
-

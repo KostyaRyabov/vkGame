@@ -1,4 +1,4 @@
-#include "pch.h"
+#include "Settings.h"
 
 LRESULT CALLBACK WndProc(
 	HWND hWnd,
@@ -29,7 +29,7 @@ Window::~Window()
 	if (_run) Close();
 }
 
-bool Window::Create(uint32_t size_x, uint32_t size_y, const wchar_t* name)
+bool Window::Create()
 {
 	WNDCLASS window_class = {};
 	window_class.style = CS_HREDRAW | CS_VREDRAW;
@@ -41,27 +41,20 @@ bool Window::Create(uint32_t size_x, uint32_t size_y, const wchar_t* name)
 	window_class.hCursor = LoadCursor(NULL, IDC_ARROW);
 	window_class.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 	window_class.lpszMenuName = NULL;
-	window_class.lpszClassName = name;
+	window_class.lpszClassName = _window_name;
 
-	_surface_size.width = size_x;
-	_surface_size.height = size_y;
-	_window_name = name;
-
-	if (!RegisterClassW(&window_class)) {
-		std::cout << "error - window is not registered!";
-		return false;
-	}
+	if (!RegisterClassW(&window_class)) return false;
 
 	DWORD ex_style = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
 	DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
 
-	RECT window_rect = { 0,0,LONG(_surface_size.width),LONG(_surface_size.height) };
+	RECT window_rect = { 0,0,LONG(Settings::Window::width),LONG(Settings::Window::height) };
 
 	AdjustWindowRectEx(&window_rect, style, FALSE, ex_style);
 
 	_window = CreateWindowEx(0,
-		name,
-		name,
+		_window_name,
+		_window_name,
 		style,
 		CW_USEDEFAULT, CW_USEDEFAULT,
 		window_rect.right - window_rect.left,
@@ -71,10 +64,7 @@ bool Window::Create(uint32_t size_x, uint32_t size_y, const wchar_t* name)
 		_instance,
 		NULL);
 
-	if (!_window) {
-		std::cout << "error - window don't created!";
-		return false;
-	}
+	if (!_window) return false;
 
 	SetWindowLongPtr(_window, GWLP_USERDATA, (LONG_PTR)this);
 
@@ -117,9 +107,4 @@ const HINSTANCE& Window::GetInstance()
 const HWND& Window::GetHandle()
 {
 	return _window;
-}
-
-const VkExtent2D& Window::GetSize()
-{
-	return _surface_size;
 }

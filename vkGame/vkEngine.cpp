@@ -1,25 +1,28 @@
 #include "vkEngine.h"
 
 vkEngine::vkEngine() {
+    Settings::load();
+
     init_step(InitInstance());
     init_step(InitDebugReport());
     init_step(InitDevice());
-    init_step(window.Create(800, 480, L"_test_"));
+    init_step(window.Create());
     init_step(InitSurface());
     init_step(InitQueue());
     init_step(InitSwapchain());
     init_step(InitSwapchainImages());
-    init_step(InitPipeline());
+    init_step(InitPipelines());
     init_step(InitFramebuffer());
+    init_step(InitCommandPool());
     window.Open();
-    Run();
 }
 
 vkEngine::~vkEngine() {
     vkDeviceWaitIdle(device);
 
+    deinit_step(DeinitCommandPool());
     deinit_step(DeinitFramebuffer());
-    deinit_step(DeinitPipeline());
+    deinit_step(DeinitPipelines());
     deinit_step(DeinitSwapchainImages());
     deinit_step(DeinitSwapchain());
     deinit_step(DeinitQueue());
@@ -44,7 +47,8 @@ bool vkEngine::InitInstance()
     std::vector<const char*> requierd_layer_list{
         "VK_LAYER_LUNARG_standard_validation",
         "VK_LAYER_KHRONOS_validation",
-        "VK_LAYER_AMD_switchable_graphics"
+        "VK_LAYER_AMD_switchable_graphics",
+        "VK_LAYER_LUNARG_monitor"
     };
 
     std::vector<const char*> requiered_extension_list{
@@ -138,6 +142,7 @@ bool vkEngine::InitDebugReport()
     debug_report_callback_create_info.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
     debug_report_callback_create_info.pNext = nullptr;
     debug_report_callback_create_info.flags = 
+        //VK_DEBUG_REPORT_INFORMATION_BIT_EXT |
         VK_DEBUG_REPORT_WARNING_BIT_EXT | 
         VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT |
         VK_DEBUG_REPORT_ERROR_BIT_EXT |
@@ -280,10 +285,10 @@ bool vkEngine::InitSwapchain()
     swapchain_create_info.pNext = nullptr;
     swapchain_create_info.flags = 0;
     swapchain_create_info.surface = surface;
-    swapchain_create_info.minImageCount = surface_capabilities.minImageCount;                   //
+    swapchain_create_info.minImageCount = 3;                   // (surface_capabilities.minImageCount)
     swapchain_create_info.imageFormat = supported_surface_format_list[0].format;                // TODO: later find optimal
     swapchain_create_info.imageColorSpace = supported_surface_format_list[0].colorSpace;        //
-    swapchain_create_info.imageExtent = window.GetSize();
+    swapchain_create_info.imageExtent = { Settings::Window::width, Settings::Window::height };
     swapchain_create_info.imageArrayLayers = 1;
     swapchain_create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     swapchain_create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -291,7 +296,7 @@ bool vkEngine::InitSwapchain()
     swapchain_create_info.pQueueFamilyIndices = nullptr;
     swapchain_create_info.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     swapchain_create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    swapchain_create_info.presentMode = supported_presentation_mode_list[0];                    // TODO: later find optimal 
+    swapchain_create_info.presentMode = supported_presentation_mode_list[1];                    // TODO: later find optimal 
     swapchain_create_info.clipped = VK_TRUE;
     swapchain_create_info.oldSwapchain = VK_NULL_HANDLE;
 
@@ -317,7 +322,7 @@ bool vkEngine::InitSwapchainImages()
         imageView_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         imageView_create_info.pNext = nullptr;
         imageView_create_info.flags = 0;
-        imageView_create_info.image = swapchain_image_list[0];
+        imageView_create_info.image = swapchain_image_list[i];
         imageView_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
         imageView_create_info.format = supported_surface_format_list[0].format;
         imageView_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -345,10 +350,10 @@ void vkEngine::DeinitSwapchainImages()
     delete[] image_view_list;
 }
 
-bool vkEngine::InitPipeline()
+bool vkEngine::InitPipelines()
 {
-    CreateShaderModule("vert.spv", &shader_module_vert);
-    CreateShaderModule("frag.spv", &shader_module_frag);
+    vk_check(CreateShaderModule("vert.spv", &shader_module_vert));
+    vk_check(CreateShaderModule("frag.spv", &shader_module_frag));
 
     VkPipelineShaderStageCreateInfo shader_stage_create_info_vert;
     shader_stage_create_info_vert.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -389,13 +394,13 @@ bool vkEngine::InitPipeline()
     VkViewport viewport;
     viewport.x = 0;
     viewport.y = 0;
-    viewport.width = window.GetSize().width;
-    viewport.height = window.GetSize().height;
+    viewport.width = Settings::Window::width;
+    viewport.height = Settings::Window::height;
     viewport.minDepth = 0;
     viewport.maxDepth = 1;
 
     VkRect2D scissor;
-    scissor.extent = { window.GetSize().width, window.GetSize().height };
+    scissor.extent = { Settings::Window::width, Settings::Window::height };
     scissor.offset = { 0,0 };
 
     VkPipelineViewportStateCreateInfo viewport_state_create_info = {};
@@ -494,6 +499,15 @@ bool vkEngine::InitPipeline()
     subpass_description.preserveAttachmentCount = 0;
     subpass_description.pPreserveAttachments = nullptr;
 
+    VkSubpassDependency subpass_dependency = {};
+    subpass_dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    subpass_dependency.dstSubpass = 0;
+    subpass_dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    subpass_dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    subpass_dependency.srcAccessMask = 0;
+    subpass_dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    subpass_dependency.dependencyFlags = 0;
+
     VkRenderPassCreateInfo render_pass_create_info = {};
     render_pass_create_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     render_pass_create_info.pNext = nullptr;
@@ -531,7 +545,7 @@ bool vkEngine::InitPipeline()
     return vk_verify(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_create_info, nullptr, &pipeline));
 }
 
-void vkEngine::DeinitPipeline()
+void vkEngine::DeinitPipelines()
 {
     vkDestroyPipeline(device, pipeline, nullptr);
     vkDestroyRenderPass(device, render_pass, nullptr);
@@ -542,7 +556,7 @@ void vkEngine::DeinitPipeline()
 
 bool vkEngine::InitFramebuffer()
 {
-    framebuffers = new VkFramebuffer[amountOfImagesInSwapchain];
+    frame_buffer_list = new VkFramebuffer[amountOfImagesInSwapchain];
 
     for (uint32_t i = 0; i < amountOfImagesInSwapchain; i++) {
         VkFramebufferCreateInfo framebuffer_create_info = {};
@@ -552,11 +566,11 @@ bool vkEngine::InitFramebuffer()
         framebuffer_create_info.renderPass = render_pass;
         framebuffer_create_info.attachmentCount = 1;
         framebuffer_create_info.pAttachments = &image_view_list[i];
-        framebuffer_create_info.width = window.GetSize().width;
-        framebuffer_create_info.height = window.GetSize().height;
+        framebuffer_create_info.width = Settings::Window::width;
+        framebuffer_create_info.height = Settings::Window::height;
         framebuffer_create_info.layers = 1;
 
-        vk_assert(vkCreateFramebuffer(device, &framebuffer_create_info, nullptr, &framebuffers[i]));
+        vk_assert(vkCreateFramebuffer(device, &framebuffer_create_info, nullptr, &frame_buffer_list[i]));
     };
 
     return true;
@@ -565,11 +579,87 @@ bool vkEngine::InitFramebuffer()
 void vkEngine::DeinitFramebuffer()
 {
     for (uint32_t i = 0; i < amountOfImagesInSwapchain; i++) {
-        vkDestroyFramebuffer(device, framebuffers[i], nullptr);
+        vkDestroyFramebuffer(device, frame_buffer_list[i], nullptr);
     };
 
-    delete[] framebuffers;
+    delete[] frame_buffer_list;
 }
+
+bool vkEngine::InitCommandPool() {
+    if (!GetQueueFamily(physical_device, VK_QUEUE_COMPUTE_BIT, command_family_index)) return false;
+
+    VkCommandPoolCreateInfo command_pool_create_info = {};
+    command_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    command_pool_create_info.pNext = nullptr;
+    command_pool_create_info.flags = 0;
+    command_pool_create_info.queueFamilyIndex = command_family_index;
+
+    vk_assert(vkCreateCommandPool(device, &command_pool_create_info, nullptr, &command_pool));
+
+    VkCommandBufferAllocateInfo command_buffer_allocate_info = {};
+    command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    command_buffer_allocate_info.pNext = nullptr;
+    command_buffer_allocate_info.commandPool = command_pool;
+    command_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    command_buffer_allocate_info.commandBufferCount = amountOfImagesInSwapchain;
+
+    command_buffer_list = new VkCommandBuffer[amountOfImagesInSwapchain];
+    vk_assert(vkAllocateCommandBuffers(device, &command_buffer_allocate_info, command_buffer_list));
+
+    VkCommandBufferBeginInfo command_buffer_begin_info = {};
+    command_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    command_buffer_begin_info.pNext = nullptr;
+    command_buffer_begin_info.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+    command_buffer_begin_info.pInheritanceInfo = nullptr;
+
+    for (uint32_t i = 0; i < amountOfImagesInSwapchain; i++) {
+        vk_assert(vkBeginCommandBuffer(command_buffer_list[i], &command_buffer_begin_info));
+
+        VkClearValue clear_value = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+        VkRenderPassBeginInfo render_pass_begin_info = {};
+        render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        render_pass_begin_info.pNext = nullptr;
+        render_pass_begin_info.renderPass = render_pass;
+        render_pass_begin_info.framebuffer = frame_buffer_list[i];
+        render_pass_begin_info.renderArea.offset = { 0, 0 };
+        render_pass_begin_info.renderArea = { static_cast<int32_t>(Settings::Window::width),  static_cast<int32_t>(Settings::Window::height) };
+        render_pass_begin_info.clearValueCount = 1;
+        render_pass_begin_info.pClearValues = &clear_value;
+
+        vkCmdBeginRenderPass(command_buffer_list[i], &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+
+        vkCmdBindPipeline(command_buffer_list[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+
+        vkCmdDraw(command_buffer_list[i], 3, 1, 0, 0);
+
+        vkCmdEndRenderPass(command_buffer_list[i]);
+
+        vk_assert(vkEndCommandBuffer(command_buffer_list[i]));
+    }
+
+    VkSemaphoreCreateInfo semaphore_create_info = {};
+    semaphore_create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    semaphore_create_info.pNext = nullptr;
+    semaphore_create_info.flags = 0;
+
+    vk_assert(vkCreateSemaphore(device, &semaphore_create_info, nullptr, &semaphore_image_available));
+    vk_assert(vkCreateSemaphore(device, &semaphore_create_info, nullptr, &semaphore_rendering_done));
+
+    return true;
+}
+
+void vkEngine::DeinitCommandPool() {
+    
+    vkDestroySemaphore(device, semaphore_image_available, nullptr);
+    vkDestroySemaphore(device, semaphore_rendering_done, nullptr);
+
+    vkFreeCommandBuffers(device, command_pool, amountOfImagesInSwapchain, command_buffer_list);
+    delete[] command_buffer_list;
+    vkDestroyCommandPool(device, command_pool, nullptr);
+}
+
+//---------------
 
 bool vkEngine::CreateShaderModule(const char* filename, VkShaderModule *shader_module)
 {
@@ -582,7 +672,6 @@ bool vkEngine::CreateShaderModule(const char* filename, VkShaderModule *shader_m
     file.seekg(0);
     file.read(shaderCode.data(), fileSize);
     file.close();
-    std::cout << filename << " is loaded!\n";
 
     VkShaderModuleCreateInfo shader_module_create_info = {};
     shader_module_create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -594,7 +683,37 @@ bool vkEngine::CreateShaderModule(const char* filename, VkShaderModule *shader_m
     return vk_verify(vkCreateShaderModule(device, &shader_module_create_info, nullptr, shader_module));
 }
 
-//---------------
+bool vkEngine::DrawFrame() {
+    uint32_t image_index;
+    vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, semaphore_image_available, VK_NULL_HANDLE, &image_index);
+    
+    VkPipelineStageFlags wait_stage_mask = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+
+    VkSubmitInfo submit_info = {};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.pNext = nullptr;
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = &semaphore_image_available;
+    submit_info.pWaitDstStageMask = &wait_stage_mask;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &command_buffer_list[image_index];
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = &semaphore_rendering_done;
+
+    vk_assert(vkQueueSubmit(queue, 1, &submit_info, VK_NULL_HANDLE));
+
+    VkPresentInfoKHR present_info = {};
+    present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    present_info.pNext = nullptr;
+    present_info.waitSemaphoreCount = 1;
+    present_info.pWaitSemaphores = &semaphore_rendering_done;
+    present_info.swapchainCount = 1;
+    present_info.pSwapchains = &swapchain;
+    present_info.pImageIndices = &image_index;
+    present_info.pResults = nullptr;
+
+    return vk_verify(vkQueuePresentKHR(queue, &present_info));
+}
 
 bool vkEngine::DeviceExtensionsSupport(const VkPhysicalDevice& pysicalDevice, std::vector<const char*>& requiredExtensions)
 {
@@ -663,7 +782,7 @@ bool vkEngine::GetQueueFamily(const VkPhysicalDevice& pysicalDevice, int flags, 
 void vkEngine::Run()
 {
     while (window.Update()) {
-
+        DrawFrame();
     }
 }
 

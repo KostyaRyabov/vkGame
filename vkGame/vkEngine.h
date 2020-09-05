@@ -1,7 +1,5 @@
 #pragma once
 
-#include "pch.h"
-#include <fstream>
 #include "Settings.h"
 
 static uint8_t	step_counter = 0;
@@ -9,6 +7,7 @@ static uint8_t	step_counter = 0;
 #define deinit_step(stp) if (5 - step_counter > 0) step_counter--; else stp
 
 #define vk_assert(arg) if (arg != VK_SUCCESS) return false
+#define vk_check(arg) if (!arg) return false
 #define vk_verify(arg) (arg == VK_SUCCESS)
 
 VKAPI_ATTR VkBool32 VKAPI_CALL DebugReportCallback(
@@ -69,6 +68,7 @@ private:
 
 	VkQueue									queue;
 	uint32_t								graphics_queue_family_index				=		0;
+	uint32_t								command_family_index					=		0;
 
 	VkSurfaceKHR							surface;
 	VkSurfaceCapabilitiesKHR				surface_capabilities;
@@ -87,7 +87,13 @@ private:
 	VkPipelineLayout						pipeline_layout							=		VK_NULL_HANDLE;
 	VkRenderPass							render_pass;
 	VkPipeline								pipeline;
-	VkFramebuffer*							framebuffers;
+	VkFramebuffer*							frame_buffer_list;
+
+	VkCommandPool							command_pool;
+	VkCommandBuffer*						command_buffer_list;
+
+	VkSemaphore								semaphore_image_available;
+	VkSemaphore								semaphore_rendering_done;
 
 	//------------
 
@@ -112,16 +118,19 @@ private:
 	bool InitSwapchainImages();
 	void DeinitSwapchainImages();
 
-	bool InitPipeline();
-	void DeinitPipeline();
+	bool InitPipelines();
+	void DeinitPipelines();
 
 	bool InitFramebuffer();
 	void DeinitFramebuffer();
 
-	bool CreateShaderModule(const char* filename, VkShaderModule* shader_module);
+	bool InitCommandPool();
+	void DeinitCommandPool();
 
 	//-------------
 
+	bool CreateShaderModule(const char* filename, VkShaderModule* shader_module);
+	bool DrawFrame();
 	bool DeviceExtensionsSupport(const VkPhysicalDevice& pysicalDevice, std::vector<const char*>& requiredExtensions);
 	bool GetQueueFamily(const VkPhysicalDevice& physicalDevice, int flags, uint32_t& returnedFamilyIndex);
 };
